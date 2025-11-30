@@ -1,0 +1,103 @@
+# Overlay Timer App
+
+## Descrição
+
+Aplicativo de overlay para timers com suporte a múltiplos monitores, atalhos globais e customização completa. Desenvolvido com Tauri v2, React, TypeScript e Mantine.
+
+## Estrutura do Projeto
+
+### Frontend (React + TypeScript)
+
+- **src/OverlayWindow.tsx**: Janela principal do overlay que exibe os timers
+- **src/SettingsWindow.tsx**: Janela de configurações
+- **src/components/OverlayIcon.tsx**: Componente individual de ícone/timer
+- **src/components/OverlayPositionEditor.tsx**: Editor visual de posição do overlay
+- **src/components/IconConfigModal.tsx**: Modal para configurar ícones
+- **src/components/SettingsPanel.tsx**: Painel de configurações gerais
+- **src/components/KeybindInput.tsx**: Input para capturar atalhos de teclado
+- **src/hooks/useConfig.ts**: Hook para gerenciar configuração
+- **src/hooks/useMonitors.ts**: Hook para obter informações dos monitores
+- **src/hooks/useTimer.ts**: Hook para gerenciar timers individuais
+- **src/types/config.ts**: Tipos TypeScript para configuração
+- **src/utils/logger.ts**: Sistema de logging centralizado
+
+### Backend (Rust)
+
+- **src-tauri/src/lib.rs**: Setup principal do Tauri, plugins e tray icon
+- **src-tauri/src/commands.rs**: Comandos Tauri (save_config, load_config, etc.)
+- **src-tauri/src/keyboard_hook.rs**: Hook de baixo nível do Windows para atalhos em jogos
+- **src-tauri/Cargo.toml**: Dependências Rust
+- **src-tauri/tauri.conf.json**: Configuração do Tauri
+- **src-tauri/capabilities/default.json**: Permissões do Tauri v2
+
+## Funcionalidades Principais
+
+1. **Overlay de Timers**
+
+   - 1-4 ícones configuráveis
+   - Timers independentes por ícone
+   - Duração configurável por timer
+   - Modo compacto ou normal
+
+2. **Atalhos Globais**
+
+   - Suporte a combinações (Alt+F1, Ctrl+1, etc.)
+   - Hook de baixo nível do Windows para funcionar em jogos
+   - Fallback para plugin global-shortcut padrão
+
+3. **Posicionamento**
+
+   - Suporte a múltiplos monitores
+   - Posição pré-definida (cantos) ou customizada
+   - Preview visual arrastável
+   - Suporte a widescreen (mantém aspect ratio)
+
+4. **Customização**
+   - Ícones Lucide ou upload de imagem
+   - Notificações (som, notificação, ambos ou nenhum)
+   - Orientação horizontal ou vertical
+   - Click-through (overlay não interfere com cliques)
+
+## Tecnologias
+
+- **Tauri v2**: Framework para aplicações desktop
+- **React 19**: Biblioteca UI
+- **TypeScript**: Tipagem estática
+- **Mantine**: Componentes UI
+- **Vite**: Build tool
+- **Rust**: Backend
+
+## Estrutura de Configuração
+
+A configuração é salva em `app_data_dir/config.json`:
+
+- `icons`: Array de configurações de ícones
+- `overlayPosition`: Posição relativa ao monitor selecionado
+- `overlayCorner`: Canto pré-definido (opcional)
+- `overlayOrientation`: 'horizontal' ou 'vertical'
+- `compactMode`: boolean
+- `overlayMonitor`: Índice do monitor (0 = primário)
+
+## Eventos Tauri
+
+- `config-changed`: Emitido quando a config é salva
+- `shortcut-triggered`: Emitido pelo hook de baixo nível quando atalho é pressionado
+
+## Comandos Tauri
+
+- `save_config`: Salva configuração
+- `load_config`: Carrega configuração
+- `save_icon`: Salva ícone customizado
+- `save_icon_from_path`: Copia ícone de um caminho
+- `get_app_data_dir`: Retorna diretório de dados do app
+- `set_overlay_click_through`: Controla click-through do overlay
+- `register_low_level_shortcut`: Registra atalho usando hook de baixo nível (Windows)
+- `unregister_all_low_level_shortcuts`: Remove todos os atalhos do hook
+
+## Notas Importantes
+
+- O overlay usa `alwaysOnTop` e `transparent` para ficar sempre visível
+- Atalhos requerem pelo menos um modificador (Alt, Ctrl, Shift ou Meta)
+- Hook de baixo nível só funciona no Windows
+- Posições são sempre relativas ao monitor selecionado
+- O preview mantém aspect ratio do monitor para suportar widescreen

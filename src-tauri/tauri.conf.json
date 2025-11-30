@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "simple-overlay-timer",
+  "version": "0.1.0",
+  "identifier": "com.lucas-diniz.simple-overlay-timer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "overlay",
+        "title": "Overlay Timer",
+        "width": 350,
+        "height": 100,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "visible": true,
+        "url": "overlay.html",
+        "devtools": true
+      },
+      {
+        "label": "settings",
+        "title": "Settings - Overlay Timer",
+        "width": 600,
+        "height": 500,
+        "resizable": true,
+        "visible": false,
+        "url": "settings.html",
+        "devtools": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {},
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": ["icons/tray-icon.png", "sfx/alarm.mp3"]
+  }
+}

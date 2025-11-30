@@ -1,0 +1,114 @@
+# Cursor Rules - Overlay Timer App
+
+## Tauri v2 - Sempre Use a Versão 2
+
+**IMPORTANTE**: Este projeto usa Tauri v2. Sempre use APIs e padrões do Tauri v2, nunca do v1.
+
+### APIs do Tauri v2
+
+1. **Window Management**
+
+   - Use `getCurrentWindow()` de `@tauri-apps/api/window`
+   - Use `WebviewWindow.getByLabel()` para obter janelas específicas
+   - Use `PhysicalPosition` e `PhysicalSize` para posicionamento:
+     ```typescript
+     import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
+     await window.setPosition(new PhysicalPosition(x, y));
+     await window.setSize(new PhysicalSize(width, height));
+     ```
+
+2. **Monitors**
+
+   - Use `availableMonitors()` e `primaryMonitor()` de `@tauri-apps/api/window`
+   - Propriedades são acessadas diretamente (não são métodos):
+     ```typescript
+     const monitors = await availableMonitors();
+     const size = monitor.size; // { width, height }
+     const position = monitor.position; // { x, y }
+     const scaleFactor = monitor.scaleFactor;
+     ```
+
+3. **Events**
+
+   - Use `window.listen()` para escutar eventos:
+     ```typescript
+     const unlisten = await window.listen("event-name", (event) => {
+       // handler
+     });
+     ```
+   - Emitir eventos no Rust: `app.emit("event-name", payload)?`
+
+4. **Commands**
+
+   - Use `invoke()` de `@tauri-apps/api/core`:
+     ```typescript
+     import { invoke } from "@tauri-apps/api/core";
+     await invoke("command_name", { param: value });
+     ```
+
+5. **Plugins**
+   - Global Shortcut: `@tauri-apps/plugin-global-shortcut`
+   - Notification: `@tauri-apps/plugin-notification`
+   - Dialog: `@tauri-apps/plugin-dialog`
+   - FS: `@tauri-apps/plugin-fs`
+
+### Estrutura de Arquivos
+
+- **Frontend**: `src/` (React + TypeScript)
+- **Backend**: `src-tauri/src/` (Rust)
+- **Config**: `src-tauri/tauri.conf.json`
+- **Capabilities**: `src-tauri/capabilities/default.json`
+
+### Convenções de Código
+
+1. **TypeScript**
+
+   - Use tipos explícitos
+   - Prefira interfaces sobre types quando possível
+   - Use hooks customizados para lógica reutilizável
+
+2. **Rust**
+
+   - Use `#[tauri::command]` para comandos
+   - Use `AppHandle` para acessar o app
+   - Use `Result<T, String>` para retornos de comando
+
+3. **Logging**
+   - Use `overlayLogger` no frontend (src/utils/logger.ts)
+   - Use `println!` no Rust para debug
+   - Prefira logs estruturados com contexto
+
+### Padrões de Nomenclatura
+
+- Componentes React: PascalCase (`OverlayIcon.tsx`)
+- Hooks: camelCase com prefixo `use` (`useConfig.ts`)
+- Comandos Rust: snake_case (`save_config`)
+- Tipos TypeScript: PascalCase (`AppConfig`)
+
+### Tratamento de Erros
+
+- Sempre trate erros com try/catch
+- Use `Result<T, String>` no Rust
+- Mostre mensagens de erro claras ao usuário
+- Log erros para debug
+
+### Performance
+
+- Use `useEffect` com dependências corretas
+- Evite re-renders desnecessários
+- Use `useRef` para valores que não precisam causar re-render
+- Prefira eventos sobre polling quando possível
+
+### Segurança
+
+- Valide inputs do usuário
+- Não exponha caminhos de arquivo sensíveis
+- Use permissões do Tauri v2 corretamente
+- Valide atalhos para evitar teclas simples sem modificador
+
+### Testes
+
+- Teste em múltiplos monitores
+- Teste com diferentes resoluções (incluindo widescreen)
+- Teste atalhos em jogos (modo borderless)
+- Verifique comportamento com diferentes números de ícones
