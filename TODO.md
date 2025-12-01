@@ -59,9 +59,16 @@
   - Drag-and-drop ordering, templates/gallery, search/filter, keyboard navigation
   - Tooltips/help text, richer onboarding/walkthrough
 
+- **Overlay filtering**
+
+  - Option to hide timers that are idle/paused from the overlay
+  - Configurable toggle per user, surfaces only active timers when enabled
+
 - **Performance & QoL**
+
   - Launch minimized to tray, auto-start with Windows, update checker
   - Better logging/reporting, performance profiling
+  - Research Windows code signing: certificate purchase, signtool pipeline, secret storage, to eliminate SmartScreen warnings
 
 ## Implementation Ideas (scratchpad)
 
