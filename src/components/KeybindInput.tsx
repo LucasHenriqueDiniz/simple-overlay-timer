@@ -6,11 +6,25 @@ interface KeybindInputProps {
   onChange: (value: string) => void;
   onError?: (error: string) => void;
   disabled?: boolean;
+  existingKeybinds?: string[];
+  currentTimerId?: string;
+  allTimers?: Array<{ id: string; name?: string; keybind?: string }>;
+  optional?: boolean;
 }
 
-export function KeybindInput({ value, onChange, onError, disabled }: KeybindInputProps) {
+export function KeybindInput({
+  value,
+  onChange,
+  onError,
+  disabled,
+  existingKeybinds = [],
+  currentTimerId,
+  allTimers = [],
+  optional = false
+}: KeybindInputProps) {
   const [displayValue, setDisplayValue] = useState(value);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
+  const [conflictWarning, setConflictWarning] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setDisplayValue(value);
@@ -87,10 +101,35 @@ export function KeybindInput({ value, onChange, onError, disabled }: KeybindInpu
     const shortcut = [...modifiers, key].join('+');
 
     console.log(`[KEYBIND] Key pressed: key="${e.key}", code="${e.code}", shortcut="${shortcut}"`);
+    
+    // Check for conflicts
+    if (existingKeybinds.includes(shortcut)) {
+      const conflictingTimer = allTimers.find(t => t.keybind === shortcut && t.id !== currentTimerId);
+      if (conflictingTimer) {
+        const conflictMsg = `"${shortcut}" is already being used by ${conflictingTimer.name || `timer "${conflictingTimer.id}"`}`;
+        setConflictWarning(conflictMsg);
+        onError?.(conflictMsg);
+      } else {
+        // Check if it's a system command
+        if (shortcut === 'Alt+R') {
+          setConflictWarning(`"${shortcut}" is already being used by Reset All Timers`);
+        } else {
+          setConflictWarning(`"${shortcut}" is already being used`);
+        }
+        onError?.(`"${shortcut}" is already being used`);
+      }
+    } else {
+      setConflictWarning(undefined);
+      onError?.('');
+    }
+    
     setDisplayValue(shortcut);
     onChange(shortcut);
-    onError?.(undefined as any);
   };
+
+  const helperText = optional
+    ? 'Optional: use Alt/Ctrl/Shift + key if you want a global shortcut'
+    : 'Required: use Alt, Ctrl, Shift or Meta + key to avoid interfering with other applications';
 
   return (
     <div>
@@ -109,8 +148,13 @@ export function KeybindInput({ value, onChange, onError, disabled }: KeybindInpu
         }}
       />
       <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-        Required: use Alt, Ctrl, Shift or Meta + key to avoid interfering with other applications
+        {helperText}
       </div>
+      {conflictWarning && (
+        <div style={{ fontSize: '12px', color: '#ff6b6b', marginTop: '4px', fontWeight: '500' }}>
+          {conflictWarning}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { AppConfig } from '../types/config';
 import { KeybindInput } from './KeybindInput';
 import * as Icons from 'lucide-react';
 import { OverlayPositionEditor } from './OverlayPositionEditor';
+import { invoke } from '@tauri-apps/api/core';
 
 interface SettingsPanelProps {
   config: AppConfig;
@@ -47,6 +48,14 @@ export function SettingsPanel({ config, onConfigChange, onAddIcon, onIconClick }
   const handleDeleteIcon = (iconId: string) => {
     const newIcons = config.icons.filter(icon => icon.id !== iconId);
     onConfigChange({ ...config, icons: newIcons });
+  };
+
+  const handleStartTimer = async (iconId: string) => {
+    try {
+      await invoke('start_timer', { timerId: iconId });
+    } catch (error) {
+      console.error('Failed to start timer', error);
+    }
   };
 
   return (
@@ -202,10 +211,22 @@ export function SettingsPanel({ config, onConfigChange, onAddIcon, onIconClick }
                     <IconComponent size={24} />
                     <div>
                       <Text size="sm" fw={500}>{icon.name || icon.iconName || 'Timer'}</Text>
-                      <Text size="xs" c="dimmed">Keybind: {icon.keybind} | Timer: {icon.timerDuration}s</Text>
+                      <Text size="xs" c="dimmed">
+                        Shortcut: {icon.keybind ? icon.keybind : 'None'} | Duration: {icon.timerDuration}s
+                      </Text>
                     </div>
                   </Group>
                   <Group gap="xs">
+                    <ActionIcon
+                      variant="light"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartTimer(icon.id);
+                      }}
+                      title="Start timer"
+                    >
+                      <Icons.Play size={16} />
+                    </ActionIcon>
                     {onIconClick && (
                       <Button size="xs" variant="light" onClick={(e) => {
                         e.stopPropagation();
@@ -255,6 +276,8 @@ export function SettingsPanel({ config, onConfigChange, onAddIcon, onIconClick }
                   console.warn('[SETTINGS] Keybind error:', error);
                 }
               }}
+              existingKeybinds={[]}
+              allTimers={[]}
             />
             <Text size="xs" c="dimmed" mt={4}>
               Keyboard shortcut to reset all running timers

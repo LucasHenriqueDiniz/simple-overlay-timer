@@ -16,6 +16,31 @@ function OverlayWindow() {
   const timerRefs = useRef<{ [key: string]: () => void }>({});
   const resetTimerRefs = useRef<{ [key: string]: () => void }>({});
 
+  // Adicionar listener para F12 para abrir DevTools
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      // F12 para abrir DevTools
+      if (event.key === 'F12') {
+        event.preventDefault();
+        try {
+          await invoke('open_overlay_devtools');
+          overlayLogger.info('[OVERLAY] DevTools opened via F12');
+          console.log('[OVERLAY] DevTools opened via F12');
+        } catch (error) {
+          overlayLogger.error('[OVERLAY] Failed to open DevTools:', error);
+          console.error('[OVERLAY] Failed to open DevTools:', error);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    overlayLogger.info('[OVERLAY] F12 key listener registered for DevTools');
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   // Escutar eventos de mudança de config e posição
   useEffect(() => {
     const window = getCurrentWindow();
@@ -25,7 +50,7 @@ function OverlayWindow() {
     const unlistenConfig = window.listen('config-changed', async () => {
       overlayLogger.info('[OVERLAY] Config changed event received, debouncing reload...');
       
-      // Debounce: aguardar 200ms antes de recarregar
+      // Debounce: aguardar 500ms antes de recarregar para evitar loops
       if (debounceTimer) {
         clearTimeout(debounceTimer);
       }
@@ -38,7 +63,7 @@ function OverlayWindow() {
         } catch (error) {
           overlayLogger.error('[OVERLAY] Failed to reload config after event:', error);
         }
-      }, 200);
+      }, 500);
     });
 
     const unlistenPosition = window.listen('position-changed', () => {
@@ -56,6 +81,34 @@ function OverlayWindow() {
       overlayLogger.info(`[OVERLAY] Reset ${Object.keys(resetTimerRefs.current).length} timers`);
     });
 
+    const unlistenResetSpecific = window.listen<string>('reset-specific-timer', (event) => {
+      const timerId = event.payload;
+      overlayLogger.info(`[OVERLAY] Reset specific timer event received for: ${timerId}`);
+      const resetFn = resetTimerRefs.current[timerId];
+      if (resetFn) {
+        resetFn();
+        overlayLogger.info(`[OVERLAY] Reset timer: ${timerId}`);
+      } else {
+        overlayLogger.warn(`[OVERLAY] Timer not found for reset: ${timerId}`);
+      }
+    });
+
+    const unlistenStartSpecific = window.listen<string>('start-specific-timer', (event) => {
+      const timerId = event.payload;
+      overlayLogger.info(`[OVERLAY] Start specific timer event received for: ${timerId}`);
+      const startFn = timerRefs.current[timerId];
+      if (startFn) {
+        try {
+          startFn();
+          overlayLogger.info(`[OVERLAY] Started timer: ${timerId}`);
+        } catch (error) {
+          overlayLogger.error(`[OVERLAY] Failed to start timer ${timerId}:`, error);
+        }
+      } else {
+        overlayLogger.warn(`[OVERLAY] Timer not found for start: ${timerId}`);
+      }
+    });
+
     overlayLogger.info('[OVERLAY] Listening for config-changed, position-changed and reset-all-timers events');
 
     return () => {
@@ -70,6 +123,12 @@ function OverlayWindow() {
       });
       unlistenReset.then((unlistenFn) => unlistenFn()).catch((err) => {
         overlayLogger.error('Failed to unlisten reset-all-timers event:', err);
+      });
+      unlistenResetSpecific.then((unlistenFn) => unlistenFn()).catch((err) => {
+        overlayLogger.error('Failed to unlisten reset-specific-timer event:', err);
+      });
+      unlistenStartSpecific.then((unlistenFn) => unlistenFn()).catch((err) => {
+        overlayLogger.error('Failed to unlisten start-specific-timer event:', err);
       });
     };
   }, [reloadConfig]);
@@ -96,6 +155,27 @@ function OverlayWindow() {
 
   useEffect(() => {
     overlayLogger.info('OverlayWindow component mounted');
+    
+    // Enable click-through for overlay window and verify decorations
+    const setupOverlayWindow = async () => {
+      try {
+        // Enable click-through
+        await invoke('set_overlay_click_through', { ignore: true });
+        overlayLogger.info('[OVERLAY] Click-through enabled');
+        console.log('[OVERLAY] Click-through enabled');
+        
+        // Note: Decorations are configured in tauri.conf.json
+        // There's no API to set decorations dynamically in Tauri v2
+        // If decorations appear, check tauri.conf.json has decorations: false
+        overlayLogger.info('[OVERLAY] Window decorations should be disabled via tauri.conf.json');
+        console.log('[OVERLAY] Window decorations configured in tauri.conf.json (decorations: false)');
+      } catch (error) {
+        overlayLogger.error('[OVERLAY] Failed to setup overlay window:', error);
+        console.error('[OVERLAY] Failed to setup overlay window:', error);
+      }
+    };
+    
+    setupOverlayWindow();
   }, []);
 
   // Escutar eventos de atalhos do hook de baixo nível
@@ -148,13 +228,16 @@ function OverlayWindow() {
             
             if (config.icons.length > 0) {
               for (const icon of config.icons) {
-                const iconId = icon.id;
+                if (!icon.keybind) continue;
                 const normalizedKeybind = icon.keybind.trim();
+                if (!normalizedKeybind) continue;
+
+                const iconId = icon.id;
                 
                 try {
                   await invoke('register_low_level_shortcut', {
                     shortcut: normalizedKeybind,
-                    iconId: iconId
+                    iconId
                   });
                   console.log(`[SHORTCUT] ✓ Registered low-level shortcut "${normalizedKeybind}" for icon: ${iconId}`);
                   overlayLogger.info(`✓ Registered low-level shortcut "${normalizedKeybind}" for icon: ${iconId}`);
@@ -200,18 +283,12 @@ function OverlayWindow() {
         await new Promise(resolve => setTimeout(resolve, 500));
         
         if (config.icons.length > 0) {
-          const timerKeys = Object.keys(timerRefs.current);
-          console.log(`[SHORTCUT] Current timerRefs keys: ${timerKeys.join(', ') || 'NONE'}`);
-          overlayLogger.info(`Current timerRefs keys: ${timerKeys.join(', ') || 'NONE'}`);
-          console.log(`[SHORTCUT] Registering ${config.icons.length} shortcuts...`);
-          overlayLogger.info(`Registering ${config.icons.length} shortcuts...`);
-          
           for (const icon of config.icons) {
-            const iconId = icon.id;
+            if (!icon.keybind) continue;
             const normalizedKeybind = icon.keybind.trim();
-            
-            console.log(`[SHORTCUT] Attempting to register: "${normalizedKeybind}" for icon: ${iconId}`);
-            overlayLogger.info(`Attempting to register: "${normalizedKeybind}" for icon: ${iconId}`);
+            if (!normalizedKeybind) continue;
+
+            const iconId = icon.id;
             
             try {
               await register(normalizedKeybind, () => {
@@ -534,14 +611,6 @@ function OverlayWindow() {
               overlayLogger.debug(`Timer ready for icon: ${icon.id}`);
               console.log(`[TIMER] Timer ready for icon: ${icon.id}, duration: ${icon.timerDuration}s`);
               timerRefs.current[icon.id] = startFn;
-              const totalReady = Object.keys(timerRefs.current).length;
-              overlayLogger.info(`Timer function registered for icon: ${icon.id}. Total: ${totalReady}/${config.icons.length}`);
-              
-              // Re-registrar shortcuts quando todos os timers estiverem prontos
-              if (totalReady === config.icons.length) {
-                console.log(`[TIMER] All ${totalReady} timers ready, shortcuts should be registered`);
-                overlayLogger.info(`All timers ready, shortcuts should be active`);
-              }
             }}
             onResetTimerReady={(resetFn) => {
               resetTimerRefs.current[icon.id] = resetFn;

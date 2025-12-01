@@ -1,5 +1,25 @@
+use serde_json::{json, Value};
 use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[tauri::command]
+pub fn open_overlay_devtools(app: AppHandle) -> Result<(), String> {
+    log_command(
+        "open_overlay_devtools",
+        "Opening DevTools for overlay window",
+    );
+
+    if let Some(overlay_window) = app.get_webview_window("overlay") {
+        overlay_window.open_devtools();
+        log_command("open_overlay_devtools", "DevTools opened successfully");
+        Ok(())
+    } else {
+        let error_msg = "Overlay window not found";
+        log_command("open_overlay_devtools", &format!("ERROR: {}", error_msg));
+        Err(error_msg.to_string())
+    }
+}
 
 fn log_command(command: &str, message: &str) {
     println!("[COMMAND:{}] {}", command, message);
@@ -122,7 +142,10 @@ pub fn save_config_silent(app: AppHandle, config: String) -> Result<(), String> 
         format!("Failed to get app data dir: {}", e)
     })?;
 
-    log_command("save_config_silent", &format!("App data dir: {:?}", app_data_dir));
+    log_command(
+        "save_config_silent",
+        &format!("App data dir: {:?}", app_data_dir),
+    );
 
     // Create directory if it doesn't exist
     fs::create_dir_all(&app_data_dir).map_err(|e| {
@@ -242,6 +265,173 @@ pub fn set_overlay_click_through(app: AppHandle, ignore: bool) -> Result<(), Str
     } else {
         Err("Overlay window not found".to_string())
     }
+}
+
+#[tauri::command]
+pub fn start_timer(app: AppHandle, timer_id: String) -> Result<(), String> {
+    log_command(
+        "start_timer",
+        &format!("Request to start timer: {}", timer_id),
+    );
+    if let Some(overlay_window) = app.get_webview_window("overlay") {
+        overlay_window
+            .emit("start-specific-timer", timer_id)
+            .map_err(|e| format!("Failed to emit start event: {}", e))?;
+        Ok(())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn quick_create_timer(app: AppHandle, duration: u64) -> Result<(), String> {
+    log_command(
+        "quick_create_timer",
+        &format!("Creating timer with duration: {}s", duration),
+    );
+
+    let config_str = load_config(app.clone())?;
+    let mut config: Value =
+        serde_json::from_str(&config_str).map_err(|e| format!("Failed to parse config: {}", e))?;
+
+    let icons = config
+        .get("icons")
+        .and_then(|i| i.as_array())
+        .cloned()
+        .unwrap_or_else(|| vec![]);
+
+    let mut used_keybinds: Vec<String> = icons
+        .iter()
+        .filter_map(|icon| {
+            icon.get("keybind")
+                .and_then(|k| k.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
+    if let Some(reset_keybind) = config.get("resetAllTimersKeybind").and_then(|k| k.as_str()) {
+        used_keybinds.push(reset_keybind.to_string());
+    }
+
+    let mut f_key = 1;
+    let mut available_keybind = format!("Alt+F{}", f_key);
+    while used_keybinds.contains(&available_keybind) && f_key <= 12 {
+        f_key += 1;
+        available_keybind = format!("Alt+F{}", f_key);
+    }
+
+    if f_key > 12 {
+        return Err("No available Alt+F* shortcuts (F1-F12 all in use)".to_string());
+    }
+
+    log_command(
+        "quick_create_timer",
+        &format!("Using keybind: {}", available_keybind),
+    );
+
+    let new_icon = json!({
+        "id": format!("icon-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()),
+        "iconName": "Timer",
+        "keybind": available_keybind,
+        "timerDuration": duration,
+        "notificationType": "notification",
+        "timerType": "countdown"
+    });
+
+    let mut icons_vec = icons;
+    icons_vec.push(new_icon);
+    config["icons"] = json!(icons_vec);
+
+    let config_str = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    save_config(app.clone(), config_str, Some(true))?;
+
+    log_command("quick_create_timer", "Timer created successfully");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn create_timer_from_preset(app: AppHandle, preset_id: String) -> Result<(), String> {
+    log_command(
+        "create_timer_from_preset",
+        &format!("Creating timer from preset: {}", preset_id),
+    );
+
+    let config_str = load_config(app.clone())?;
+    let mut config: Value =
+        serde_json::from_str(&config_str).map_err(|e| format!("Failed to parse config: {}", e))?;
+
+    let presets = config
+        .get("timerPresets")
+        .and_then(|p| p.as_array())
+        .ok_or_else(|| "No presets configured".to_string())?;
+
+    let preset = presets
+        .iter()
+        .find(|p| p.get("id").and_then(|id| id.as_str()) == Some(preset_id.as_str()))
+        .ok_or_else(|| "Preset not found".to_string())?;
+
+    let duration = preset
+        .get("duration")
+        .and_then(|d| d.as_u64())
+        .ok_or_else(|| "Preset missing duration".to_string())?;
+
+    let icon_name = preset
+        .get("iconName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Timer");
+    let notification_type = preset
+        .get("notificationType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("notification");
+    let name = preset
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Timer Preset");
+    let keybind = preset
+        .get("keybind")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_millis();
+    let new_icon_id = format!("icon-{}", timestamp);
+
+    let mut new_icon = json!({
+        "id": new_icon_id,
+        "name": name,
+        "iconName": icon_name,
+        "timerDuration": duration,
+        "notificationType": notification_type,
+        "timerType": "countdown"
+    });
+
+    if let Some(k) = keybind {
+        new_icon["keybind"] = json!(k);
+    }
+
+    let icons = config
+        .get("icons")
+        .and_then(|i| i.as_array())
+        .cloned()
+        .unwrap_or_else(Vec::new);
+    let mut icons_vec = icons;
+    icons_vec.push(new_icon);
+    config["icons"] = json!(icons_vec);
+
+    let updated_config = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    save_config(app.clone(), updated_config, Some(true))?;
+    log_command(
+        "create_timer_from_preset",
+        "Timer created successfully from preset",
+    );
+    Ok(())
 }
 
 #[cfg(windows)]

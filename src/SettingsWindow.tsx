@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { MantineProvider, Container, Title } from '@mantine/core';
+import { MantineProvider, Container } from '@mantine/core';
 import { useConfig } from './hooks/useConfig';
 import { IconConfigModal } from './components/IconConfigModal';
-import { SettingsPanel } from './components/SettingsPanel';
+import { WelcomeModal } from './components/WelcomeModal';
+import { SettingsTabs } from './components/SettingsTabs';
+import { SettingsHeader } from './components/SettingsHeader';
 import { IconConfig } from './types/config';
 import { settingsLogger } from './utils/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -14,6 +16,7 @@ function SettingsWindow() {
   const [selectedIcon, setSelectedIcon] = useState<IconConfig | null>(null);
   const [modalOpened, setModalOpened] = useState(false);
   const [forceShow, setForceShow] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
 
   useEffect(() => {
     settingsLogger.info('SettingsWindow component mounted');
@@ -39,6 +42,9 @@ function SettingsWindow() {
   // Force show after 2 seconds if still loading
   useEffect(() => {
     settingsLogger.debug('SettingsWindow render - loading:', loading, 'config:', config);
+    if (!loading && config.showWelcomeModal !== false) {
+      setWelcomeOpen(true);
+    }
   }, [loading, config]);
 
   useEffect(() => {
@@ -78,9 +84,26 @@ function SettingsWindow() {
     setModalOpened(true);
   };
 
+  const handleCloseWelcome = async () => {
+    setWelcomeOpen(false);
+    if (config.showWelcomeModal !== false) {
+      await saveConfig({ ...config, showWelcomeModal: false });
+    }
+  };
+
+  const handleCreateTimerFromWelcome = async () => {
+    setWelcomeOpen(false);
+    setSelectedIcon(null);
+    setModalOpened(true);
+    if (config.showWelcomeModal !== false) {
+      await saveConfig({ ...config, showWelcomeModal: false });
+    }
+  };
+
   const existingKeybinds = config.icons
     .filter(icon => !selectedIcon || icon.id !== selectedIcon.id)
-    .map(icon => icon.keybind);
+    .map(icon => icon.keybind?.trim())
+    .filter((key): key is string => Boolean(key));
 
   const showContent = !loading || forceShow;
 
@@ -88,46 +111,55 @@ function SettingsWindow() {
     <MantineProvider>
       <div style={{ 
         background: '#ffffff', 
-        minHeight: '100vh', 
-        padding: '20px',
+        minHeight: '100vh',
         width: '100%',
         height: '100%',
-        color: '#000000'
+        color: '#000000',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
       }}>
-        {!showContent ? (
-          <div style={{ padding: '20px', color: '#000000' }}>
-            <h1>Carregando configurações...</h1>
-          </div>
-        ) : (
-          <>
-            <Container size="md" py="xl" style={{ width: '100%' }}>
-              <Title order={1} mb="xl" style={{ color: '#000000' }}>Configurações - Overlay Timer</Title>
-              
-              <SettingsPanel
-                config={config}
-                onConfigChange={saveConfig}
-                onAddIcon={handleAddIcon}
-                onIconClick={(iconId) => {
-                  const icon = config.icons.find(i => i.id === iconId);
-                  if (icon) {
-                    handleIconClick(icon);
-                  }
-                }}
-              />
-            </Container>
+        <SettingsHeader />
+        <div style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+          {!showContent ? (
+            <div style={{ padding: '20px', color: '#000000' }}>
+              <h1>Loading settings...</h1>
+            </div>
+          ) : (
+            <>
+              <Container size="md" py="xl" style={{ width: '100%' }}>
+                <SettingsTabs
+                  config={config}
+                  onConfigChange={saveConfig}
+                  onAddIcon={handleAddIcon}
+                  onIconClick={(iconId: string) => {
+                    const icon = config.icons.find(i => i.id === iconId);
+                    if (icon) {
+                      handleIconClick(icon);
+                    }
+                  }}
+                />
+              </Container>
 
-            <IconConfigModal
-              opened={modalOpened}
-              onClose={() => {
-                setModalOpened(false);
-                setSelectedIcon(null);
-              }}
-              config={selectedIcon}
-              onSave={handleSaveIcon}
-              existingKeybinds={existingKeybinds}
-            />
-          </>
-        )}
+              <IconConfigModal
+                opened={modalOpened}
+                onClose={() => {
+                  setModalOpened(false);
+                  setSelectedIcon(null);
+                }}
+                config={selectedIcon}
+                onSave={handleSaveIcon}
+                existingKeybinds={existingKeybinds}
+              />
+              <WelcomeModal
+                opened={welcomeOpen}
+                onClose={handleCloseWelcome}
+                onCreateFirstTimer={handleCreateTimerFromWelcome}
+                existingTimers={config.icons}
+              />
+            </>
+          )}
+        </div>
       </div>
     </MantineProvider>
   );

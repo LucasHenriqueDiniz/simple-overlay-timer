@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as Icons from 'lucide-react';
 import { IconConfig } from '../types/config';
 import { useTimer } from '../hooks/useTimer';
-import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
+import { useNotifications } from '../hooks/useNotifications';
 import { timerLogger } from '../utils/logger';
 
 interface OverlayIconProps {
@@ -30,205 +30,115 @@ export function OverlayIcon({
   timerColor = '#2196F3',
   timerRunningColor = '#4CAF50'
 }: OverlayIconProps) {
-  const timer = useTimer(config.timerDuration);
-  const completedRef = useRef(false);
-  const wasRunningRef = useRef(false);
+  const { sendNotification: sendNotificationWithSound } = useNotifications();
+
+  const timerCallbacks = useMemo(
+    () => ({
+      onTimerComplete: ({ repeatCount }: { repeatCount: number }) => {
+        if (config.notificationType === 'none') {
+          onTimerComplete?.();
+          return;
+        }
+
+        const playSound = config.notificationType === 'sound' || config.notificationType === 'both';
+        const sendNative = config.notificationType === 'notification' || config.notificationType === 'both';
+        const body =
+          config.completionNotificationText ||
+          (config.name ? `Timer "${config.name}" completed!` : `Timer icon ${config.iconName || 'Custom'} completed!`);
+
+        sendNotificationWithSound({
+          title: 'Timer Completed',
+          body,
+          playSound,
+          sendNotification: sendNative,
+          soundPath: config.soundPath
+        });
+
+        timerLogger.info(`[TIMER] Completion notified for icon ${config.id} (repeat ${repeatCount})`);
+        onTimerComplete?.();
+      }
+    }),
+    [
+      config.completionNotificationText,
+      config.id,
+      config.iconName,
+      config.name,
+      config.notificationType,
+      config.soundPath,
+      onTimerComplete,
+      sendNotificationWithSound
+    ]
+  );
+
+  const timer = useTimer(config.timerDuration, config.repeat, config.timerType || 'countdown', timerCallbacks);
+  const prevIntervalStateRef = useRef<boolean>(timer.isInInterval || false);
+  const intervalNotifiedRepeatsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    if (timer.running && !wasRunningRef.current) {
-      wasRunningRef.current = true;
-      completedRef.current = false;
-      timerLogger.debug(`[TIMER] Timer started for icon: ${config.id}`);
+    const intervalNotificationEnabled = config.repeat?.intervalNotification !== false;
+    if (!intervalNotificationEnabled || config.notificationType === 'none') {
+      intervalNotifiedRepeatsRef.current.clear();
+      prevIntervalStateRef.current = timer.isInInterval || false;
+      return;
     }
-  }, [timer.running, config.id]);
 
-  useEffect(() => {
-    if (timer.remaining === 0 && !timer.running && wasRunningRef.current && !completedRef.current) {
-      completedRef.current = true;
-      wasRunningRef.current = false; // Reset para permitir próximo ciclo
-      timerLogger.info(`[TIMER] ✓✓✓ Timer completed for icon: ${config.id} (${config.iconName || 'Custom'}), remaining=${timer.remaining}, running=${timer.running}`);
-      console.log(`[TIMER] ✓✓✓ Timer completed for icon: ${config.id}, notificationType=${config.notificationType}`);
-      
-      const handleNotifications = async () => {
-        // Notificação
-        if (config.notificationType === 'notification' || config.notificationType === 'both') {
-          timerLogger.info(`[NOTIFICATION] ========== Attempting to send notification for icon: ${config.id} ==========`);
-          console.log(`[NOTIFICATION] ========== Attempting to send notification for icon: ${config.id} ==========`);
-          try {
-            let permissionGranted = await isPermissionGranted();
-            timerLogger.info(`[NOTIFICATION] Current permission status: ${permissionGranted}`);
-            console.log(`[NOTIFICATION] Current permission status: ${permissionGranted}`);
-            
-            if (!permissionGranted) {
-              timerLogger.info('[NOTIFICATION] Requesting notification permission...');
-              console.log('[NOTIFICATION] Requesting notification permission...');
-              try {
-                const permission = await requestPermission();
-                permissionGranted = permission === 'granted';
-                timerLogger.info(`[NOTIFICATION] Permission request result: ${permission}`);
-                console.log(`[NOTIFICATION] Permission request result: ${permission}`);
-              } catch (permError) {
-                timerLogger.error(`[NOTIFICATION] Error requesting permission:`, permError);
-                console.error('[NOTIFICATION] Error requesting permission:', permError);
-              }
-            }
-            
-            if (permissionGranted) {
-              timerLogger.info(`[NOTIFICATION] Sending notification...`);
-              console.log(`[NOTIFICATION] Sending notification...`);
-              try {
-                await sendNotification({
-                  title: 'Timer Completed',
-                  body: config.name 
-                    ? `Timer "${config.name}" completed!`
-                    : `Timer icon ${config.iconName || 'Custom'} completed!`
-                });
-                timerLogger.info(`[NOTIFICATION] ✓✓✓ Notification sent successfully for icon: ${config.id}`);
-                console.log(`[NOTIFICATION] ✓✓✓ Notification sent successfully for icon: ${config.id}`);
-              } catch (sendError) {
-                timerLogger.error(`[NOTIFICATION] ✗✗✗ Error sending notification:`, sendError);
-                console.error('[NOTIFICATION] ✗✗✗ Error sending notification:', sendError);
-                if (sendError instanceof Error) {
-                  console.error('[NOTIFICATION] Error message:', sendError.message);
-                  console.error('[NOTIFICATION] Error stack:', sendError.stack);
-                }
-                throw sendError; // Re-throw para ser capturado pelo catch externo
-              }
-            } else {
-              timerLogger.warn('[NOTIFICATION] ✗✗✗ Permission not granted, cannot send notification');
-              console.warn('[NOTIFICATION] ✗✗✗ Permission not granted, cannot send notification');
-              console.warn('[NOTIFICATION] TIP: Check Windows notification settings in Settings > System > Notifications');
-            }
-          } catch (error) {
-            timerLogger.error(`[NOTIFICATION] ✗✗✗ Failed to send notification for icon: ${config.id}:`, error);
-            console.error('[NOTIFICATION] ✗✗✗ Failed to send notification:', error);
-            if (error instanceof Error) {
-              console.error('[NOTIFICATION] Error message:', error.message);
-              console.error('[NOTIFICATION] Error stack:', error.stack);
-            }
-          }
-        }
-        
-        // Som
-        if (config.notificationType === 'sound' || config.notificationType === 'both') {
-          timerLogger.info(`[SOUND] ========== Attempting to play alarm sound for icon: ${config.id} ==========`);
-          console.log(`[SOUND] ========== Attempting to play alarm sound for icon: ${config.id} ==========`);
-          // No Tauri v2, arquivos em resources podem ser acessados via asset://
-          // Tentar múltiplos caminhos possíveis
-          const audioPaths = [
-            'asset://sfx/alarm.mp3',  // Production (resources)
-            '/sfx/alarm.mp3',  // Dev mode (public)
-            'sfx/alarm.mp3',
-            './sfx/alarm.mp3',
-            '../sfx/alarm.mp3',
-            'public/sfx/alarm.mp3',
-            '/public/sfx/alarm.mp3'
-          ];
-          
-          let audioPlayed = false;
-          for (const path of audioPaths) {
-            try {
-              timerLogger.debug(`[SOUND] Trying path: ${path}`);
-              console.log(`[SOUND] Trying path: ${path}`);
-              const audio = new Audio(path);
-              audio.volume = 0.7;
-              
-              // Adicionar event listeners para debug
-              audio.addEventListener('loadstart', () => {
-                timerLogger.debug(`[SOUND] Audio loadstart for path: ${path}`);
-                console.log(`[SOUND] Audio loadstart for path: ${path}`);
-              });
-              audio.addEventListener('canplay', () => {
-                timerLogger.debug(`[SOUND] Audio canplay for path: ${path}`);
-                console.log(`[SOUND] Audio canplay for path: ${path}`);
-              });
-              audio.addEventListener('error', () => {
-                // Erro é esperado quando tentamos múltiplos caminhos - apenas logar como debug
-                timerLogger.debug(`[SOUND] Audio error for path: ${path} (this is normal when trying multiple paths)`);
-                console.debug(`[SOUND] Audio error for path: ${path} (this is normal when trying multiple paths)`);
-              });
-              audio.addEventListener('loadeddata', () => {
-                console.log(`[SOUND] Audio loadeddata for path: ${path}`);
-              });
-              audio.addEventListener('play', () => {
-                console.log(`[SOUND] ✓✓✓ Audio started playing for path: ${path}`);
-              });
-              
-              const playPromise = audio.play();
-              if (playPromise !== undefined) {
-                await playPromise
-                  .then(() => {
-                    timerLogger.info(`[SOUND] ✓✓✓ Alarm sound playing for icon: ${config.id} from path: ${path}`);
-                    console.log(`[SOUND] ✓✓✓ Alarm sound playing for icon: ${config.id} from path: ${path}`);
-                    audioPlayed = true;
-                  })
-                  .catch((error) => {
-                    // Erro é esperado quando tentamos múltiplos caminhos - apenas logar como debug
-                    timerLogger.debug(`[SOUND] ✗ Failed to play from ${path} (trying next path...):`, error);
-                    console.debug(`[SOUND] ✗ Failed to play from ${path} (trying next path...):`, error);
-                  });
-                if (audioPlayed) break;
-              }
-            } catch (err) {
-              // Erro é esperado quando tentamos múltiplos caminhos - apenas logar como debug
-              timerLogger.debug(`[SOUND] ✗ Failed to create audio from ${path} (trying next path...):`, err);
-              console.debug(`[SOUND] ✗ Failed to create audio from ${path} (trying next path...):`, err);
-            }
-          }
-          
-          if (!audioPlayed) {
-            timerLogger.warn('[SOUND] Could not play alarm sound from any path. Trying to use beep as fallback.');
-            console.warn('[SOUND] Could not play alarm sound from any path. Trying to use beep as fallback.');
-            try {
-              const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-              const oscillator = audioContext.createOscillator();
-              const gainNode = audioContext.createGain();
-              
-              oscillator.connect(gainNode);
-              gainNode.connect(audioContext.destination);
-              
-              oscillator.frequency.value = 800;
-              oscillator.type = 'sine';
-              
-              gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-              gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-              
-              oscillator.start(audioContext.currentTime);
-              oscillator.stop(audioContext.currentTime + 0.5);
-              timerLogger.info('[SOUND] ✓✓✓ Beep fallback played successfully');
-              console.log('[SOUND] ✓✓✓ Beep fallback played successfully');
-            } catch (beepError) {
-              timerLogger.error('[SOUND] ✗✗✗ Failed to play beep fallback:', beepError);
-              console.error('[SOUND] ✗✗✗ Failed to play beep fallback:', beepError);
-            }
-          }
-        }
-      };
-      
-      handleNotifications();
-      onTimerComplete?.();
+    const repeatCount = timer.repeatCount || 0;
+    const nowInInterval = Boolean(timer.isInInterval);
+    const justEnteredInterval = !prevIntervalStateRef.current && nowInInterval;
+    const justExitedInterval = prevIntervalStateRef.current && !nowInInterval && timer.running;
+
+    if (justEnteredInterval) {
+      intervalNotifiedRepeatsRef.current.delete(repeatCount);
     }
-    
-    if (timer.running) {
-      completedRef.current = false;
+
+    if (justExitedInterval && !intervalNotifiedRepeatsRef.current.has(repeatCount)) {
+      intervalNotifiedRepeatsRef.current.add(repeatCount);
+
+      const playSound = config.notificationType === 'sound' || config.notificationType === 'both';
+      const sendNative = config.notificationType === 'notification' || config.notificationType === 'both';
+      const body =
+        config.repeat?.intervalNotificationText ||
+        (config.name
+          ? `Timer "${config.name}" interval period completed`
+          : `Timer icon ${config.iconName || 'Custom'} interval period completed`);
+
+      sendNotificationWithSound({
+        title: 'Timer Interval Completed',
+        body,
+        playSound,
+        sendNotification: sendNative,
+        soundPath: config.soundPath
+      });
+
+      timerLogger.info(`[TIMER] Interval notified for icon ${config.id} (repeat ${repeatCount})`);
     }
-  }, [timer.remaining, timer.running, timer.startTime, config.notificationType, config.iconName, config.id, onTimerComplete]);
+
+    prevIntervalStateRef.current = nowInInterval;
+  }, [
+    config.iconName,
+    config.id,
+    config.name,
+    config.notificationType,
+    config.repeat?.intervalNotification,
+    config.repeat?.intervalNotificationText,
+    config.soundPath,
+    sendNotificationWithSound,
+    timer.isInInterval,
+    timer.repeatCount,
+    timer.running
+  ]);
 
   // Expose start function to parent - usar useCallback para garantir referência estável
   useEffect(() => {
     if (onStartTimerReady) {
       timerLogger.debug(`Exposing start function for icon: ${config.id}`);
-      console.log(`[TIMER] Exposing start function for icon: ${config.id}, duration: ${config.timerDuration}s, keybind: ${config.keybind}`);
-      // Passar uma função wrapper que sempre chama o timer.start atual
       const startWrapper = () => {
-        console.log(`[TIMER] Start wrapper called for icon: ${config.id} (keybind: ${config.keybind})`);
         timer.start();
       };
       onStartTimerReady(startWrapper);
     }
     if (onResetTimerReady) {
       const resetWrapper = () => {
-        console.log(`[TIMER] Reset wrapper called for icon: ${config.id}`);
         timer.reset();
       };
       onResetTimerReady(resetWrapper);
@@ -249,6 +159,15 @@ export function OverlayIcon({
     ? (Icons as any)[config.iconName]
     : Icons.Timer;
 
+  const getDisplayColor = () => {
+    if (timer.isInInterval && config.repeat?.intervalColor) {
+      return config.repeat.intervalColor;
+    }
+    return timer.running ? timerRunningColor : timerColor;
+  };
+
+  const displayColor = getDisplayColor();
+
   if (compactMode) {
     return (
       <div
@@ -268,17 +187,17 @@ export function OverlayIcon({
         }}
       >
         {config.iconName && (Icons as any)[config.iconName] ? (
-          React.createElement((Icons as any)[config.iconName], { size: 32, color: timer.running ? timerRunningColor : timerColor })
+          React.createElement((Icons as any)[config.iconName], { size: 32, color: displayColor })
         ) : (
           <div style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 1px rgba(0, 0, 0, 0.4))' }}>
-            <IconComponent size={32} color={timer.running ? timerRunningColor : timerColor} />
+            <IconComponent size={32} color={displayColor} />
           </div>
         )}
         <span
           style={{
             fontSize: '12px',
             fontWeight: 'bold',
-            color: timer.running ? timerRunningColor : timerColor,
+            color: displayColor,
             textShadow: '0 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.5)'
           }}
         >
@@ -325,7 +244,7 @@ export function OverlayIcon({
           cy="40"
           r="36"
           fill="none"
-          stroke={timer.running ? timerRunningColor : timerColor}
+          stroke={displayColor}
           strokeWidth="3"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
@@ -345,12 +264,12 @@ export function OverlayIcon({
           gap: '4px'
         }}
       >
-        <IconComponent size={24} color={timer.running ? timerRunningColor : timerColor} />
+        <IconComponent size={24} color={displayColor} />
         <span
           style={{
             fontSize: '10px',
             fontWeight: 'bold',
-            color: timer.running ? timerRunningColor : timerColor
+            color: displayColor
           }}
         >
           {formatTime(timer.remaining)}

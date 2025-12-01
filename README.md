@@ -1,61 +1,72 @@
-# Simple Overlay Timer
+    # Overlay Timer
 
-A lightweight, customizable overlay timer application built with Tauri v2, React, and TypeScript. Perfect for gaming, productivity, and any scenario where you need visual timers that don't interfere with your workflow.
+    A lightweight, customizable overlay timer application built with Tauri v2, React, and TypeScript. Perfect for gaming, productivity, and any scenario where you need visual timers that don't interfere with your workflow.
 
-## Features
+    ## Features
 
-- 🎯 **Multiple Timers**: Create and manage multiple independent timers
-- ⌨️ **Global Shortcuts**: Start timers with customizable keyboard shortcuts (works even in games)
-- 🎨 **Customizable Appearance**: Choose colors, icons, and display modes
-- 📍 **Multi-Monitor Support**: Position timers on any monitor with preset or custom positions
-- 🔔 **Notifications**: Get notified when timers complete (Windows notifications + sound)
-- 🎮 **Game-Friendly**: Low-level keyboard hooks ensure shortcuts work in fullscreen games
-- 🔄 **Reset All**: Quickly reset all running timers with a single shortcut or tray menu option
+    - 🎯 **Multiple Timers & Stopwatches**: Independent countdowns and stopwatches, each with its own global shortcut
+    - 👋 **Built-in Onboarding**: Welcome modal explains the basics the first time you open Settings
+    - ⌨️ **Global Shortcuts**: Works even in fullscreen games thanks to low-level hooks
+    - 🔁 **Repeats + Intervals**: Countdown timers can auto-repeat with custom interval notifications
+    - 🍅 **Pomodoro Presets**: Two ready-to-use presets (25/5 min) plus your own custom preset library
+    - 🔔 **Notifications**: Windows toasts + sounds with configurable text per timer/interval
+    - 🎨 **Customizable Appearance**: Icons, colors, stroke, monitor position, compact mode
+    - 🕹️ **Game-Friendly Reset**: Default `Ctrl+Alt+P` resets all timers (change it in Keybinds tab)
 
-## Installation
+    ## Screenshots
 
-### Windows
+    ![Settings window](.github/assets/config-screen.png)
 
-Download the latest release from the [Releases](https://github.com/LucasHenriqueDiniz/simple-overlay-timer/releases) page and run the installer.
+    ![Overlay timers](.github/assets/overlay.png)
 
-## Usage
+    ## Installation
 
-1. **Configure Timers**: Right-click the tray icon and select "Settings"
-2. **Add Timers**: Click "Add New Icon" to create a new timer
-3. **Set Shortcuts**: Configure keyboard shortcuts for each timer (must include Alt, Ctrl, Shift, or Meta)
-4. **Position Overlay**: Choose monitor and position (preset corners or custom)
-5. **Start Timers**: Press your configured shortcuts to start timers
-6. **Reset All**: Use the tray menu or configured shortcut to reset all timers
+    ### Windows
 
-## Development
+    Download the latest release from the [Releases](https://github.com/LucasHenriqueDiniz/simple-overlay-timer/releases) page and run the installer.
 
-### Prerequisites
+    ## Usage
 
-- Node.js 18+ and npm
-- Rust (latest stable)
-- Windows SDK (for Windows builds)
+    1. **Open Settings**: Right-click the tray icon → “Settings”. A welcome modal will guide first-time users.
+    2. **Add Timers**: “Add Timer” lets you pick countdown or stopwatch, icons, repeats, intervals, etc.
+    3. **Set Shortcuts**: Each shortcut must include a modifier (Alt/Ctrl/Shift/Meta). Use the Keybinds tab for global actions like “Reset All”.
+    4. **Use Presets**: The Keybinds tab ships with Pomodoro focus/break presets (Ctrl+Alt+1 / Ctrl+Alt+2). Edit or add your own.
+    5. **Start/Reset**: Press your timer shortcut to start it. Tap again to restart; hold the stopwatch shortcut to reset.
+    6. **Reset Everything**: Use the tray menu or the global reset shortcut (default `Ctrl+Alt+P`) to stop every timer at once.
 
-### Setup
+    ## Development
 
-```bash
-# Install dependencies
-npm install
+    ### Prerequisites
 
-# Run in development mode
-npm run tauri dev
+    - Node.js 18+ and npm
+    - Rust (latest stable)
+    - Windows SDK (for Windows builds)
 
-# Build for production
-npm run tauri build
-```
+    ### Setup
 
-## Building
+    ```bash
+    # Install dependencies
+    npm install
 
-The application uses Tauri v2 for cross-platform desktop builds. Builds are automatically created via GitHub Actions on every release tag.
+    # Run in development mode
+    npm run tauri dev
 
-## License
+    # Build for production
+    npm run tauri build
+    ```
 
-MIT License - see LICENSE file for details
+    ## Building
 
-## Contributing
+    The application uses Tauri v2 for cross-platform desktop builds. Builds are automatically created via GitHub Actions on every release tag.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+    ## License
+
+    MIT License - see LICENSE file for details
+
+    ## Roadmap
+
+    See [TODO.md](TODO.md) for planned features and improvements.
+
+    ## Contributing
+
+    Contributions are welcome! Please feel free to submit a Pull Request.

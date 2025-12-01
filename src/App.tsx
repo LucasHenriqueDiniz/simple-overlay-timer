@@ -25,7 +25,11 @@ function App() {
         await unregisterAll();
         
         for (const icon of config.icons) {
-          await register(icon.keybind, () => {
+          if (!icon.keybind) continue;
+          const normalizedKeybind = icon.keybind.trim();
+          if (!normalizedKeybind) continue;
+
+          await register(normalizedKeybind, () => {
             const startFn = timerRefs.current[icon.id];
             if (startFn) {
               startFn();
@@ -124,7 +128,8 @@ function App() {
 
   const existingKeybinds = config.icons
     .filter(icon => !selectedIcon || icon.id !== selectedIcon.id)
-    .map(icon => icon.keybind);
+    .map(icon => icon.keybind?.trim())
+    .filter((key): key is string => Boolean(key));
 
   if (loading) {
     return <div>Loading...</div>;

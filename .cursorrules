@@ -1,114 +1,220 @@
-# Cursor Rules - Overlay Timer App
+# Overlay Timer - Cursor Rules
 
-## Tauri v2 - Sempre Use a Versão 2
+## Visão Geral do Projeto
 
-**IMPORTANTE**: Este projeto usa Tauri v2. Sempre use APIs e padrões do Tauri v2, nunca do v1.
+Este é um aplicativo de timer overlay construído com **Tauri v2**, **React**, **TypeScript** e **Rust**. O aplicativo permite criar múltiplos timers visuais que aparecem como overlay na tela, com suporte a atalhos de teclado globais, notificações e sistema de repeat com intervalos.
 
-### APIs do Tauri v2
+## Arquitetura
 
-1. **Window Management**
+### Frontend (React + TypeScript)
+- **Framework**: React 19 com TypeScript
+- **UI Library**: Mantine UI
+- **Build Tool**: Vite
+- **Estado**: React hooks (useState, useEffect, useRef, useCallback)
+- **Logging**: Sistema customizado em `src/utils/logger.ts`
 
-   - Use `getCurrentWindow()` de `@tauri-apps/api/window`
-   - Use `WebviewWindow.getByLabel()` para obter janelas específicas
-   - Use `PhysicalPosition` e `PhysicalSize` para posicionamento:
-     ```typescript
-     import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
-     await window.setPosition(new PhysicalPosition(x, y));
-     await window.setSize(new PhysicalSize(width, height));
-     ```
+### Backend (Rust + Tauri v2)
+- **Framework**: Tauri v2
+- **Linguagem**: Rust
+- **Plugins**: 
+  - `tauri-plugin-global-shortcut` (atalhos globais padrão)
+  - `tauri-plugin-notification` (notificações do sistema)
+  - `tauri-plugin-dialog` (diálogos)
+  - `tauri-plugin-fs` (sistema de arquivos)
+- **Low-level Keyboard Hooks**: Implementação customizada em `keyboard_hook.rs` para Windows (funciona em jogos fullscreen)
 
-2. **Monitors**
+## Estrutura de Arquivos
 
-   - Use `availableMonitors()` e `primaryMonitor()` de `@tauri-apps/api/window`
-   - Propriedades são acessadas diretamente (não são métodos):
-     ```typescript
-     const monitors = await availableMonitors();
-     const size = monitor.size; // { width, height }
-     const position = monitor.position; // { x, y }
-     const scaleFactor = monitor.scaleFactor;
-     ```
+### Frontend (`src/`)
+- **`components/`**: Componentes React
+  - `OverlayIcon.tsx`: Componente principal que renderiza cada timer no overlay
+  - `IconConfigModal.tsx`: Modal para configurar timers individuais
+  - `SettingsPanel.tsx`: Painel de configurações principal
+  - `KeybindInput.tsx`: Input para capturar atalhos de teclado
+  - `DurationInput.tsx`: Input para duração de timer
+- **`hooks/`**: Custom hooks
+  - `useTimer.ts`: Hook principal que gerencia a lógica do timer (countdown/stopwatch, repeat, intervalos)
+  - `useConfig.ts`: Hook para carregar/salvar configuração
+  - `useNotifications.ts`: Hook centralizado para notificações e sons
+  - `useMonitors.ts`: Hook para detectar monitores
+- **`types/config.ts`**: Definições de tipos TypeScript
+- **`OverlayWindow.tsx`**: Componente principal da janela overlay
+- **`SettingsWindow.tsx`**: Componente principal da janela de configurações
 
-3. **Events**
+### Backend (`src-tauri/src/`)
+- **`lib.rs`**: Setup principal do Tauri (tray icon, menu, eventos)
+- **`commands.rs`**: Comandos Tauri expostos ao frontend
+- **`keyboard_hook.rs`**: Implementação de low-level keyboard hooks para Windows
+- **`main.rs`**: Entry point do Rust
 
-   - Use `window.listen()` para escutar eventos:
-     ```typescript
-     const unlisten = await window.listen("event-name", (event) => {
-       // handler
-     });
-     ```
-   - Emitir eventos no Rust: `app.emit("event-name", payload)?`
+## Sistema de Timers
 
-4. **Commands**
+### Tipos de Timer
+1. **Countdown Timer**: Conta regressiva de uma duração específica
+2. **Stopwatch**: Conta progressiva a partir de zero
 
-   - Use `invoke()` de `@tauri-apps/api/core`:
-     ```typescript
-     import { invoke } from "@tauri-apps/api/core";
-     await invoke("command_name", { param: value });
-     ```
+### Sistema de Repeat
+- **Enabled**: Ativa/desativa repeat
+- **Times**: Número de repetições (0 = infinito)
+- **Interval**: Tempo de espera entre repetições (em segundos)
+- **Interval Color**: Cor exibida durante o intervalo
+- **Interval Notification**: Se deve notificar quando o intervalo termina
 
-5. **Plugins**
-   - Global Shortcut: `@tauri-apps/plugin-global-shortcut`
-   - Notification: `@tauri-apps/plugin-notification`
-   - Dialog: `@tauri-apps/plugin-dialog`
-   - FS: `@tauri-apps/plugin-fs`
+### Fluxo de Funcionamento
 
-### Estrutura de Arquivos
+1. **Timer Completa** (`remaining === 0`):
+   - Se `repeat.enabled === true` e ainda há repetições:
+     - Se `interval > 0`: Entra no período de intervalo (`isInInterval = true`)
+     - Se `interval === 0`: Reinicia imediatamente
+   - Se não há mais repetições: Timer para completamente
 
-- **Frontend**: `src/` (React + TypeScript)
-- **Backend**: `src-tauri/src/` (Rust)
-- **Config**: `src-tauri/tauri.conf.json`
-- **Capabilities**: `src-tauri/capabilities/default.json`
+2. **Período de Intervalo**:
+   - `isInInterval = true`
+   - `running = false`
+   - `remaining` conta regressiva do intervalo
+   - Quando `remaining === 0`: Timer reinicia automaticamente
 
-### Convenções de Código
+3. **Notificações**:
+   - **Completion**: Quando timer completa (se `notificationType !== 'none'`)
+   - **Interval**: Quando intervalo termina (se `repeat.intervalNotification === true`)
+   - Usa o mesmo `notificationType` do timer (sound, notification, both)
 
-1. **TypeScript**
+## Sistema de Notificações
 
-   - Use tipos explícitos
-   - Prefira interfaces sobre types quando possível
-   - Use hooks customizados para lógica reutilizável
+### Hook `useNotifications`
+- Centraliza toda lógica de notificações e sons
+- Aceita `NotificationOptions`:
+  - `title`: Título da notificação
+  - `body`: Corpo da mensagem (pode ser customizado)
+  - `playSound`: Se deve tocar som
+  - `sendNotification`: Se deve enviar notificação do sistema
+  - `soundPath`: Caminho customizado do som (opcional)
 
-2. **Rust**
+### Tipos de Notificação
+- `'none'`: Nenhuma notificação
+- `'sound'`: Apenas som
+- `'notification'`: Apenas notificação do sistema
+- `'both'`: Som + notificação
 
-   - Use `#[tauri::command]` para comandos
-   - Use `AppHandle` para acessar o app
-   - Use `Result<T, String>` para retornos de comando
+### Caminhos de Áudio
+O sistema tenta múltiplos caminhos em ordem:
+1. `soundPath` fornecido diretamente
+2. `asset://sfx/${soundPath}`
+3. `/sfx/${soundPath}`
+4. `sfx/${soundPath}`
+5. Fallback para `alarm.mp3` se nenhum funcionar
+6. Beep sintético como último recurso
 
-3. **Logging**
-   - Use `overlayLogger` no frontend (src/utils/logger.ts)
-   - Use `println!` no Rust para debug
-   - Prefira logs estruturados com contexto
+## Sistema de Keybinds
 
-### Padrões de Nomenclatura
+### Dois Sistemas Paralelos
 
-- Componentes React: PascalCase (`OverlayIcon.tsx`)
-- Hooks: camelCase com prefixo `use` (`useConfig.ts`)
-- Comandos Rust: snake_case (`save_config`)
-- Tipos TypeScript: PascalCase (`AppConfig`)
+1. **Global Shortcut Plugin** (padrão):
+   - Usa `@tauri-apps/plugin-global-shortcut`
+   - Funciona na maioria dos casos
+   - Registrado em `OverlayWindow.tsx`
 
-### Tratamento de Erros
+2. **Low-level Keyboard Hook** (Windows):
+   - Implementação customizada em `keyboard_hook.rs`
+   - Usa `SetWindowsHookExA` com `WH_KEYBOARD_LL`
+   - Funciona em jogos fullscreen/borderless
+   - Registrado automaticamente no setup do Tauri (`lib.rs`)
 
-- Sempre trate erros com try/catch
-- Use `Result<T, String>` no Rust
-- Mostre mensagens de erro claras ao usuário
-- Log erros para debug
+### Detecção Automática
+- O frontend detecta se está no Windows e tenta usar low-level hook primeiro
+- Se falhar, fallback para global shortcut plugin
+- Logs detalhados mostram qual sistema está sendo usado
 
-### Performance
+## Configuração e Persistência
 
-- Use `useEffect` com dependências corretas
-- Evite re-renders desnecessários
-- Use `useRef` para valores que não precisam causar re-render
-- Prefira eventos sobre polling quando possível
+### Estrutura de Config (`AppConfig`)
+- **`icons`**: Array de `IconConfig` (cada timer)
+- **`overlayPosition`**: Posição do overlay
+- **`overlayCorner`**: Canto do overlay (preset)
+- **`overlayMonitor`**: Índice do monitor
+- **`resetAllTimersKeybind`**: Atalho para resetar todos os timers
+- **`timerPresets`**: Presets de timer rápidos
+- **`stopwatches`**: Configurações de stopwatches
 
-### Segurança
+### Persistência
+- Config salva em `app_data_dir/config.json` (via `commands.rs`)
+- Ícones customizados salvos em `app_data_dir/icons/`
+- Evento `config-changed` emitido quando config muda (debounced 500ms)
 
-- Valide inputs do usuário
-- Não exponha caminhos de arquivo sensíveis
-- Use permissões do Tauri v2 corretamente
-- Valide atalhos para evitar teclas simples sem modificador
+## Convenções de Código
 
-### Testes
+### Nomenclatura
+- **Componentes**: PascalCase (`OverlayIcon.tsx`)
+- **Hooks**: camelCase com prefixo `use` (`useTimer.ts`)
+- **Tipos/Interfaces**: PascalCase (`IconConfig`, `TimerState`)
+- **Funções Rust**: snake_case (`register_low_level_shortcut`)
+- **Comandos Tauri**: snake_case (`save_config`)
 
-- Teste em múltiplos monitores
-- Teste com diferentes resoluções (incluindo widescreen)
-- Teste atalhos em jogos (modo borderless)
-- Verifique comportamento com diferentes números de ícones
+### Logging
+- Usar `timerLogger` do `src/utils/logger.ts` para logs estruturados
+- Prefixos de contexto: `[TIMER]`, `[NOTIFICATION]`, `[SOUND]`, `[SHORTCUT]`, etc.
+- Logs de debug: `timerLogger.debug()`
+- Logs de info: `timerLogger.info()`
+- Logs de erro: `timerLogger.error()`
+- Console.log também usado para debug rápido
+
+### Estado e Refs
+- Usar `useState` para estado que causa re-render
+- Usar `useRef` para valores que não causam re-render (contadores, flags)
+- Usar `useCallback` para funções passadas como props ou em dependências
+- `stateRef.current` usado em `useTimer` para acessar estado atual em callbacks
+
+### Detecção de Intervalo
+- **Problema conhecido**: Detecção de quando intervalo termina pode ser difícil
+- **Solução atual**: Dupla detecção
+  1. Quando `isInInterval === true` e `remaining === 0` (detecção primária)
+  2. Quando `isInInterval` muda de `true` para `false` (fallback)
+- Usar `Set<number>` para rastrear quais intervalos já foram notificados
+- Logs detalhados adicionados para debug
+
+## Problemas Conhecidos e Soluções
+
+### Interval Notifications Não Funcionando
+- **Causa**: Detecção de término do intervalo pode falhar se estado muda muito rápido
+- **Solução**: Dupla detecção + logs detalhados
+- **Debug**: Verificar logs `[TIMER] Interval detection check` e `[USE_TIMER] INTERVAL COMPLETED`
+
+### Som Não Toca Durante Intervalos
+- **Causa**: `notificationType` pode não estar sendo respeitado corretamente
+- **Solução**: Hook `useNotifications` centralizado respeita `playSound` e `sendNotification`
+- **Debug**: Verificar logs `[NOTIFICATIONS]` e `[SOUND]`
+
+### Keybinds Não Funcionam em Jogos
+- **Causa**: Global shortcut plugin não funciona em fullscreen
+- **Solução**: Low-level keyboard hook registrado automaticamente no Windows
+- **Debug**: Verificar logs `[SETUP] Low-level keyboard hook registered`
+
+## Tauri v2 APIs Importantes
+
+### Window Management
+- `getCurrentWindow()`: Obter janela atual
+- `WebviewWindowBuilder`: Criar novas janelas
+- `set_ignore_cursor_events(true)`: Ativar click-through
+- `set_shadow(false)`: Desabilitar sombra
+
+### Events
+- `window.listen()`: Escutar eventos
+- `app.emit()`: Emitir eventos (Rust)
+- `window.emit()`: Emitir eventos (Rust, para janela específica)
+
+### Commands
+- `invoke()`: Chamar comandos Rust do frontend
+- `#[tauri::command]`: Decorator para comandos Rust
+
+## Recursos Importantes
+
+- **Assets**: Sons em `src-tauri/sfx/` e `public/sfx/`
+- **Ícones**: Em `src-tauri/icons/` e `public/icon/`
+- **Config**: `src-tauri/tauri.conf.json` define janelas overlay e settings
+
+## Debugging
+
+- Logs detalhados em console do navegador
+- Logs Rust em stdout (terminal)
+- DevTools disponível em desenvolvimento (`devtools: true` no overlay)
+- Verificar `timerLogger` para logs estruturados
